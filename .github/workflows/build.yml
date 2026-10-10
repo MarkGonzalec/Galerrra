@@ -1,0 +1,47 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack project archive
+        run: |
+          ZIP=$(ls *.zip | head -1)
+          echo "Archive: $ZIP"
+          mkdir -p project
+          unzip -q "$ZIP" -d project
+          GRADLEW=$(find project -name gradlew -not -path '*/.*' | head -1)
+          PROJECT_DIR=$(dirname "$GRADLEW")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project: $PROJECT_DIR"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # release: R8 + сжатие ресурсов — быстрее и плавнее на старых телефонах
+      - name: Build release APK (optimized)
+        continue-on-error: true
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace
+
+      # debug — запасной вариант, если release не собрался
+      - name: Build debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: ./gradlew assembleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Galera-apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/**/*.apk
